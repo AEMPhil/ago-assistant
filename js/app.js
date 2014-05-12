@@ -126,7 +126,15 @@ require([
 
     // Load the html templates.
     jquery.get("templates.html", function (templates) {
-        jquery("body").append(templates);
+    	jquery("body").append(templates);
+    	jquery("body").find('script[type="text/template"]').each(function(idx,script){
+    		if(script.src!==null && script.src!==undefined && script.src!==""){
+    			jquery(script).load(script.src,function(response){ 
+    				jquery('#'+script.id).html(response);
+    			});
+    		}
+    	});
+    	
     });
 
     // Clean up the lists when copy content is selected.
@@ -148,6 +156,13 @@ require([
         viewStats();
     });
 
+    // Add a listener for the "View site usage" action.
+    jquery("li[data-action='usage']").click(function () {
+        cleanUp();
+        jquery("#currentAction").html("<a>view site usage</a>");
+        viewUsage();
+    });
+
     // Add a listener for the "Update map services" action.
     jquery("li[data-action='updateWebmapServices']").click(function () {
         cleanUp();
@@ -163,10 +178,12 @@ require([
     });
 
     var app = {
+    	organization:{subscription:{start:1380603600000, credits:2000}},
         user: {},
         stats: {
             activities: {}
         },
+        credits:{},
     };
 
     function validateUrl(el) {
@@ -230,6 +247,7 @@ require([
         var portalUrl = sessionStorage.sourceUrl,
             token = sessionStorage.sourceToken;
         portal.self(portalUrl, token).done(function (data) {
+        	jquery.extend(app.organization, {id:data.id, name:data.name});
             var template = jquery("#sessionTemplate").html(),
                 html = mustache.to_html(template, data);
             jquery("#sourceLoginForm").before(html);
@@ -289,6 +307,7 @@ require([
         sessionStorage.clear();
         app.user = {};
         app.stats.activities = {};
+        app.credits={};
         jquery("#currentAction").html("");
         jquery("#itemsArea").empty(); //Clear any old items.
         jquery("#dropArea").empty(); //Clear any old items.
@@ -475,8 +494,9 @@ require([
 
     }
 
-    function viewStats() {
-        portal.user.profile(sessionStorage.sourceUrl, sessionStorage.sourceUsername, sessionStorage.sourceToken).done(function (user) {
+    function viewStats(username) {
+    	username = username || sessionStorage.sourceUsername;
+        portal.user.profile(sessionStorage.sourceUrl, username, sessionStorage.sourceToken).done(function (user) {
 
             var template = jquery("#statsTemplate").html();
             var thumbnailUrl;
@@ -535,6 +555,125 @@ require([
             });
 
         });
+    }
+    
+    function handleErrorResponse(error){
+    	switch (error.code){
+    	case 498:	//token invalid
+    		jquery("li[data-action='logout']").trigger('click');
+    		break;
+    	default:
+    		break;
+    	}
+    	return;
+    }
+    
+    function viewUsage(){
+        //portal.user.profile(sessionStorage.sourceUrl, sessionStorage.sourceUsername, sessionStorage.sourceToken).done(function (user) {
+    	
+    	//Clear the usage data
+    	app.credits={};
+    	
+    	//Make request to usage service for daily data, cut into one month chunks
+    	var start = new Date(app.organization.subscription.start);
+    	var now = Date.now();
+    	var requests = [];
+    	
+	    while (start < now){
+    		var end = new Date(new Date(start).setMonth(start.getMonth()+1));
+    		requests.push(portal.usage(
+    				sessionStorage.sourceUrl, 
+    				app.organization.id, 
+    				start.getTime(), end.getTime(),
+    				"username", sessionStorage.sourceToken).done(function(response){
+    					//Handle the data by stuffing it into the app.credit variable
+    	        		if(response.hasOwnProperty('error')){
+    	        			//Handle the error
+    	        			handleErrorResponse(response);
+    	        		} 
+    	        		jquery.each(response.data, function(index,entry){
+    	        			jquery.each(entry.credits, function(idx, use){
+    	        				storeCreditUsage(entry.username, Number(use[0]), Number(use[1]));
+    	        			});
+    	        		});
+    				}));
+    		start = end;
+	    }
+    	
+	    jquery.when.apply(jquery, requests).done(function(){
+
+	    	//Process the results for presentation
+	    	summarizedCredits = {};
+	    	for( username in app.credits){
+	    		for(timestamp in app.credits[username]){
+	    			c = app.credits[username][timestamp];
+	    			if(c>0.0){
+	    				if(!summarizedCredits.hasOwnProperty(timestamp)){
+	    					summarizedCredits[timestamp] = 0.0;
+	    				}
+	    				summarizedCredits[timestamp] = summarizedCredits[timestamp] + c;
+	    			}
+	    		}
+	    	}
+	    	
+	    	//Compute credit usage stats by user since year start
+	    	y2dStats=[];
+	    	var usage=0.0;
+	    	jquery.each(app.credits, function(idx, userdata, element){
+	    		var sum = 0.0;
+	    		jquery.each( userdata, function(i,v){ sum += Number(v); } );
+	    		y2dStats.push({username:idx, y2dTotal:sum.toFixed(2)});
+	    		usage+=sum;
+	    	});
+	    	
+	    	y2dStats.sort(function(a,b){return a.y2dTotal<b.y2dTotal;});
+        	
+	    	// Calculate usage quota stats.
+	    	var budget = app.organization.subscription.credits,
+	    		usageRate = (usage / budget).toFixed(2) * 100;
+	    	
+	    	
+            var template = jquery("#usageTemplate").html();
+            var templateData = {
+                sitename: app.organization.name,
+                usage: usage.toFixed(0),
+                quota: budget,
+                usageRate: usageRate
+            };
+
+            html = mustache.to_html(template, templateData);
+            jquery("body").append(html);
+            
+            usageCalendar(summarizedCredits);
+
+            jquery("#usageModal").modal("show");
+
+            
+            var tableTemplate = jquery("#creditsByUserTemplate").html();
+            jquery("#creditsByUser").html(mustache.to_html(tableTemplate, {
+            	usageResults: y2dStats
+            }));
+            
+            jquery('.viewDetailsButton').on('click', function(){
+            	var username = jquery(this).parent().prev().text();
+            	viewStats(username);
+            });
+
+            jquery("#usageModal").on("shown.bs.modal", function () {
+                // Apply CSS to style the calendar arrows.
+                var calHeight = jquery(".calContainer").height();
+                // Center the calendar.
+                jquery(".cal-heatmap-container").css("margin", "auto");
+                // Adjust the arrows.
+                jquery(".calArrow").css("margin-top", (calHeight - 20) + "px");
+            });
+
+            jquery("#usageModal").on("hidden.bs.modal", function () {
+                jquery("#currentAction").html("");
+                // Destroy the stats modal so it can be properly rendered next time.
+                jquery("#usageModal").remove();
+            });
+    	});
     }
 
     function makeDraggable(el) {
@@ -629,7 +768,85 @@ require([
         });
 
     }
+    
+    function usageDataUrl(portal,organizationId, token){
+    	return portal + "sharing/rest/portals/"+ organizationId +
+    		"/usage?startTime={{t:start}}&endTime={{t:end}}&period=1d&groupBy=username&"+
+    		"f=json&token="+token;
+    }
+    
+/*    function usageDataFormatter(data){
+    	if(data.hasOwnProperty("error")) throw data;
+        
+    	summarizedCredits = {};
+        for( username in data){
+        	for(timestamp in app.credits[username]){
+        		c = data[username][timestamp];
+        		if(c>0.0){
+        			if(!summarizedCredits.hasOwnProperty(timestamp)){
+        				summarizedCredits[timestamp] = 0.0;
+        			}
+        			summarizedCredits[timestamp] = summarizedCredits[timestamp] + c;
+        		}
+        	}
+        }
 
+    	return summarizedCredits;
+    }*/
+    
+    function usageCalendar(credits) {
+
+        // Create a date object for three months ago.
+        var today = new Date();
+        var startDate = new Date();
+        startDate.setMonth(today.getMonth() - 5);
+        if (today.getMonth() < 5) {
+            startDate.setYear(today.getFullYear() - 1);
+        }
+        
+        
+        var cal = new CalHeatMap();
+        cal.init({
+            itemSelector: "#usageCalendar",
+            domain: "month",
+            subDomain: "day",
+            data: credits, //usageDataUrl(sessionStorage.sourceUrl,app.organization.id,sessionStorage.sourceToken),
+            start: startDate,
+            //afterLoadData: usageDataFormatter,
+            cellSize: 10,
+            domainGutter: 10,
+            range: 5,
+            legend: [1, 2, 5, 10],
+            displayLegend: false,
+            tooltip: true,
+            itemNamespace: "cal",
+            previousSelector: "#calPrev",
+            nextSelector: "#calNext",
+            domainLabelFormat: "%b '%y",
+            subDomainTitleFormat: {
+                empty: "No activity on {date}",
+                filled: "Saved {count} {name} {connector} {date}"
+            },
+            domainDynamicDimension: false
+        });
+
+    }
+
+
+    function storeCreditUsage( username, time, credits){
+    	username = username||"Unspecified";
+    	if(!app.credits.hasOwnProperty(username)){
+    		app.credits[username] = {};
+    	}
+    	
+    	creds = app.credits[username];
+    	seconds = time/1000;
+    	if(!creds.hasOwnProperty(seconds)){
+    		creds[seconds] = 0.0;
+    	}
+    	creds[seconds] = creds[seconds]+credits;
+    }
+    
     function storeActivity(activityTime) {
         seconds = activityTime / 1000;
         app.stats.activities[seconds] = 1;

@@ -52,6 +52,24 @@ define(["jquery", "util"], function (jquery, util) {
                 dataType: "json"
             });
         },
+        usage: function(portal, orgId, startTime, endTime, sortField,  token, period){
+        	if(Array.isArray(sortField)) sortField = sortField.join(',');
+        	period=period || '1d'; 
+        	return jquery.ajax({
+                type: "GET",
+                url: portal + "sharing/rest/portals/"+orgId+"/usage?",
+                data: {
+                    startTime: startTime,
+                    endTime: endTime,
+                    groupBy: sortField,
+                    vars: "credits",
+                    period: period,
+                    f: "json",
+                    token: token
+                },
+                dataType: "json"
+        	});
+        },
         user: {
             profile: function (portal, username, token) {
                 // 

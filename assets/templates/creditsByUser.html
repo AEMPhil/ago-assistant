@@ -1,0 +1,15 @@
+<table class="table table-condensed">
+    <tr>
+        <th>User</th>
+        <th>Details</th>
+        <th>Credits</th>
+    </tr>
+    {{#usageResults}}
+    <tr>
+        <td>{{ username }}</td>
+        <td><button type='button' class='viewDetailsButton'><span class="glyphicon glyphicon-eye-open"></span></button></td>
+        <td>{{ y2dTotal }}</td>
+    </tr>
+    {{/usageResults}}
+</table>
+

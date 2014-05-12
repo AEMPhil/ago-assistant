@@ -1,0 +1,46 @@
+    <!-- User usage modal -->
+    <div id="usageModal" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="usageModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">x</button>
+                    <h3 id="usageModalLabel">{{ sitename }} credit usage</h3>
+                </div>
+                <div class="modal-body">
+                    <div class="container">
+                        <div class="row">
+                            <h4 class="text-center muted">Recent Activity</h4>
+                            <!-- div class="col-md-3">
+                                <img src="{{ thumbnail }}" class="img-rounded" style="max-width: 130px; max-height: 130px; margin-top: 10px">
+                            </div-->
+                            <div class="col-md-12 calContainer">
+                            <div class="row">
+                                <div class="col-md-1 calArrow" style="height: auto"><i id="calPrev" class="glyphicon glyphicon-backward"></i></div>
+                                <div class="col-md-10" id="usageCalendar" style="width: 100%">
+                                </div>
+                                <div class="col-md-1 calArrow" style="height: auto"><i id="calNext" class="glyphicon glyphicon-forward"></i></div>
+                            </div>
+                            </div>
+                        </div>
+                        <br>
+                        <div class="row">
+                            <h4 class="text-center">Year to date by user</h4>
+                            <div id="creditsByUser"><!--Year to date credit tally table--></div>
+                        </div>
+                        <div class="row">
+                            <h4 class="text-center">Credit Quota</h4>
+                            <div class="progress progress-striped">
+                                <div class="progress-bar" role="progressbar" aria-valuenow="{{ usageRate }}" aria-valuemin="0" aria-valuemax="100" style="width: {{ usageRate }}%">
+                                    <span class="sr-only">{{ usage }} of {{ quota }} credits used</span>
+                                </div>
+                            </div>
+                            <div style="text-align: center; margin-top:-15px">{{ usage }} of {{ quota }} credits used</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn" data-dismiss="modal" aria-hidden="true">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
